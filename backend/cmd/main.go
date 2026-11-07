@@ -70,12 +70,22 @@ func main() {
 	}
 	log.Printf("Profiles: %d, CA_URL=%s", len(profiles), cfg.CAURL)
 
-	stepClient := step.NewStepClient(cfg.CAURL, cfg.CARootFile, cfg.CARootFingerprint, profiles)
+	// With a root file, derive the fingerprint to display (it is only used to download
+	// the root when no file is configured).
+	rootFingerprint := cfg.CARootFingerprint
+	if rootFingerprint == "" && cfg.CARootFile != "" {
+		if fp, err := step.RootFingerprint(cfg.CARootFile); err != nil {
+			log.Printf("WARNING: cannot read the CA root %s: %v", cfg.CARootFile, err)
+		} else {
+			rootFingerprint = fp
+		}
+	}
+	stepClient := step.NewStepClient(cfg.CAURL, cfg.CARootFile, rootFingerprint, profiles)
 
 	// cert-manager inventory
 	var syncFn func() error
 	if cfg.K8sSync {
-		syncer, err := k8s.NewInCluster(database, cfg.K8sIssuerName)
+		syncer, err := k8s.NewInCluster(database, cfg.K8sIssuerNames)
 		if err != nil {
 			log.Printf("WARNING: cert-manager sync disabled: %v", err)
 		} else {
@@ -95,7 +105,7 @@ func main() {
 	if proxy.Enabled {
 		log.Printf("Trusted-proxy authentication ON (header %s, %d admin(s), %d viewer(s))", proxy.Header, len(proxy.Admins), len(proxy.Viewers))
 	}
-	handlers := api.NewHandlers(database, stepClient, "acme-intranet", proxy, cfg.CookieSecure, syncFn)
+	handlers := api.NewHandlers(database, stepClient, cfg.ACMEProvisioner, cfg.PublicCAURL, proxy, cfg.CookieSecure, syncFn)
 
 	// Setup Gin router
 	r := gin.Default()

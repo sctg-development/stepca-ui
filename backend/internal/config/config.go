@@ -9,6 +9,10 @@ import (
 
 type Config struct {
 	CAURL string
+	// PublicCAURL is the address clients use (shown in Settings); CAURL, used by the
+	// backend itself, may be an in-cluster address.
+	PublicCAURL     string
+	ACMEProvisioner string
 	// CARootFile is the CA root certificate on disk (mounted from a
 	// ConfigMap). When set, the step CLI uses it directly instead of
 	// downloading the root with CA_ROOT_FINGERPRINT on every operation.
@@ -49,8 +53,9 @@ type Config struct {
 	CookieSecure bool
 
 	// cert-manager inventory (read-only, in-cluster).
-	K8sSync         bool
-	K8sIssuerName   string
+	K8sSync bool
+	// K8sIssuerNames: cert-manager issuers whose Certificates are mirrored (K8S_ISSUER_NAME, comma separated)
+	K8sIssuerNames  []string
 	K8sSyncInterval time.Duration
 }
 
@@ -63,6 +68,8 @@ func Load() *Config {
 
 	return &Config{
 		CAURL:                getEnv("CA_URL", ""),
+		PublicCAURL:          strings.TrimRight(getEnv("PUBLIC_CA_URL", ""), "/"),
+		ACMEProvisioner:      getEnv("ACME_PROVISIONER", "acme"),
 		CARootFile:           getEnv("CA_ROOT_FILE", ""),
 		CARootFingerprint:    getEnv("CA_ROOT_FINGERPRINT", ""),
 		ProfilesFile:         getEnv("PROFILES_FILE", ""),
@@ -82,7 +89,7 @@ func Load() *Config {
 		ViewerEmails:         splitList(getEnv("VIEWER_EMAILS", "")),
 		CookieSecure:         getBool("COOKIE_SECURE"),
 		K8sSync:              getBool("K8S_SYNC"),
-		K8sIssuerName:        getEnv("K8S_ISSUER_NAME", "step-ca"),
+		K8sIssuerNames:       splitNames(getEnv("K8S_ISSUER_NAME", "step-ca")),
 		K8sSyncInterval:      interval,
 	}
 }
@@ -103,6 +110,17 @@ func splitList(s string) []string {
 	var out []string
 	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }) {
 		if p = strings.ToLower(strings.TrimSpace(p)); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// splitNames splits a comma/space separated list keeping the case (resource names).
+func splitNames(s string) []string {
+	var out []string
+	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }) {
+		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
 		}
 	}

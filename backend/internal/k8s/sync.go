@@ -22,10 +22,10 @@ import (
 const saDir = "/var/run/secrets/kubernetes.io/serviceaccount"
 
 type Syncer struct {
-	db     *db.Database
-	issuer string
-	base   string
-	client *http.Client
+	db      *db.Database
+	issuers map[string]bool
+	base    string
+	client  *http.Client
 }
 
 type certList struct {
@@ -51,7 +51,7 @@ type certList struct {
 }
 
 // NewInCluster builds a Syncer from the pod's service account.
-func NewInCluster(database *db.Database, issuerName string) (*Syncer, error) {
+func NewInCluster(database *db.Database, issuerNames []string) (*Syncer, error) {
 	host, port := os.Getenv("KUBERNETES_SERVICE_HOST"), os.Getenv("KUBERNETES_SERVICE_PORT")
 	if host == "" || port == "" {
 		return nil, fmt.Errorf("not running in a cluster (KUBERNETES_SERVICE_HOST unset)")
@@ -63,10 +63,10 @@ func NewInCluster(database *db.Database, issuerName string) (*Syncer, error) {
 	pool := x509.NewCertPool()
 	pool.AppendCertsFromPEM(caPEM)
 	return &Syncer{
-		db:     database,
-		issuer: issuerName,
-		base:   "https://" + net.JoinHostPort(host, port),
-		client: &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}},
+		db:      database,
+		issuers: toSet(issuerNames),
+		base:    "https://" + net.JoinHostPort(host, port),
+		client:  &http.Client{Timeout: 20 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}},
 	}, nil
 }
 
@@ -96,7 +96,7 @@ func (s *Syncer) list() (*certList, error) {
 }
 
 // Sync replaces the cert-manager records of the inventory with the current
-// Certificates whose issuerRef is the step-ca issuer.
+// Certificates whose issuerRef is one of the configured issuers.
 func (s *Syncer) Sync() error {
 	l, err := s.list()
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *Syncer) Sync() error {
 	}
 	var keep []string
 	for _, it := range l.Items {
-		if it.Spec.IssuerRef.Name != s.issuer || it.Status.NotAfter == nil {
+		if !s.issuers[it.Spec.IssuerRef.Name] || it.Status.NotAfter == nil {
 			continue
 		}
 		id := "cm-" + it.Metadata.Namespace + "." + it.Metadata.Name
@@ -129,4 +129,12 @@ func (s *Syncer) Sync() error {
 		keep = append(keep, id)
 	}
 	return s.db.DeleteSourceNotIn("cert-manager", keep)
+}
+
+func toSet(names []string) map[string]bool {
+	m := make(map[string]bool, len(names))
+	for _, n := range names {
+		m[n] = true
+	}
+	return m
 }

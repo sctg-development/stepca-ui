@@ -452,6 +452,9 @@ ui:
   replicaCount: 1                # SQLite on a ReadWriteOnce volume: keep 1
   # CA URL used by the UI to talk to the CA (default: the in-cluster Service)
   caUrl: ""
+  # Address shown in Settings (what clients use). Default: https://<exposure.host> when set.
+  publicCaUrl: ""
+  acmeProvisioner: ""            # shown in the ACME directory URL; default clusterIssuer.acmeProvisioner
   rootCA: ""                     # PEM of the root; default inject.certificates.root_ca
   # Issuance profiles = provisioner + limits. A map (not a list) so that the
   # private keys can live in a SOPS file (Helm replaces lists, merges maps).
@@ -478,7 +481,8 @@ ui:
     viewerEmails: []
   cookieSecure: true
   certManagerSync:
-    enabled: true                # list cert-manager Certificates issued by clusterIssuer.name (read-only RBAC)
+    enabled: true                # list cert-manager Certificates (read-only RBAC, no access to Secrets)
+    issuers: []                  # issuers to mirror; default [clusterIssuer.name]. e.g. [step-ca, lesmuids-ca-issuer]
     interval: 5m
   persistence:
     enabled: true

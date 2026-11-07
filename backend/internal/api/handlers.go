@@ -23,6 +23,7 @@ type Handlers struct {
 	db              *db.Database
 	stepClient      *step.StepClient
 	acmeProvisioner string
+	publicCAURL     string
 	proxy           ProxyAuth
 	cookieSecure    bool
 	syncFn          func() error // nil when the cert-manager sync is disabled
@@ -31,11 +32,12 @@ type Handlers struct {
 
 // NewHandlers wires the handlers; acmeProvisioner is only used to display
 // the ACME directory URL on the settings page.
-func NewHandlers(database *db.Database, stepClient *step.StepClient, acmeProvisioner string, proxy ProxyAuth, cookieSecure bool, syncFn func() error) *Handlers {
+func NewHandlers(database *db.Database, stepClient *step.StepClient, acmeProvisioner, publicCAURL string, proxy ProxyAuth, cookieSecure bool, syncFn func() error) *Handlers {
 	return &Handlers{
 		db:              database,
 		stepClient:      stepClient,
 		acmeProvisioner: acmeProvisioner,
+		publicCAURL:     publicCAURL,
 		proxy:           proxy,
 		cookieSecure:    cookieSecure,
 		syncFn:          syncFn,
@@ -455,11 +457,16 @@ func (h *Handlers) RevokeCertificate(c *gin.Context) {
 
 // GetCASettings returns CA configuration
 func (h *Handlers) GetCASettings(c *gin.Context) {
+	// show the address clients use, not the (possibly in-cluster) one the backend calls
+	caURL := h.stepClient.CAURL
+	if h.publicCAURL != "" {
+		caURL = h.publicCAURL
+	}
 	settings := gin.H{
-		"ca_url":           h.stepClient.CAURL,
+		"ca_url":           caURL,
 		"root_fingerprint": h.stepClient.CARootFingerprint,
 		"acme_directories": []string{
-			h.stepClient.CAURL + "/acme/" + h.acmeProvisioner + "/directory",
+			caURL + "/acme/" + h.acmeProvisioner + "/directory",
 		},
 	}
 

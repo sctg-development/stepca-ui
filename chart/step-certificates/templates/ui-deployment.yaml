@@ -71,6 +71,12 @@ spec:
           env:
             - name: CA_URL
               value: {{ .Values.ui.caUrl | default (include "step-certificates.url" .) | quote }}
+            {{- with (.Values.ui.publicCaUrl | default (ternary (printf "https://%s" .Values.exposure.host) "" (ne .Values.exposure.host ""))) }}
+            - name: PUBLIC_CA_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: ACME_PROVISIONER
+              value: {{ .Values.ui.acmeProvisioner | default .Values.clusterIssuer.acmeProvisioner | quote }}
             - name: CA_ROOT_FILE
               value: /etc/stepca-ui/ca/root_ca.crt
             - name: PROFILES_FILE
@@ -93,7 +99,7 @@ spec:
             - name: K8S_SYNC
               value: "true"
             - name: K8S_ISSUER_NAME
-              value: {{ .Values.clusterIssuer.name | quote }}
+              value: {{ join "," (.Values.ui.certManagerSync.issuers | default (list .Values.clusterIssuer.name)) | quote }}
             - name: K8S_SYNC_INTERVAL
               value: {{ .Values.ui.certManagerSync.interval | quote }}
             {{- end }}

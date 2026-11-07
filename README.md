@@ -26,14 +26,15 @@ import them.
 
 | Variable | Meaning |
 |---|---|
-| `CA_URL` | step-ca URL |
+| `CA_URL` | step-ca URL used by the backend (may be in-cluster) |
+| `PUBLIC_CA_URL`, `ACME_PROVISIONER` | address and ACME provisioner shown in Settings (what clients use) |
 | `CA_ROOT_FILE` / `CA_ROOT_FINGERPRINT` | the root certificate file, or the fingerprint to download it with |
 | `PROFILES_FILE` | YAML, see below. Without it, one `default` profile from `PROVISIONER_NAME`/`PROVISIONER_PASSWORD` |
 | `USERS_FILE` | YAML `users: [{username, passwordHash (bcrypt), role: admin\|viewer}]`, synced at start |
 | `INITIAL_ADMIN_USERNAME` / `INITIAL_ADMIN_PASSWORD` | seed one admin when the user table is empty |
 | `TRUST_PROXY_AUTH`, `PROXY_USER_HEADER`, `ADMIN_EMAILS`, `VIEWER_EMAILS` | trusted-proxy (oauth2-proxy) authentication |
 | `COOKIE_SECURE` | force the `Secure` flag (also set automatically when `X-Forwarded-Proto: https`) |
-| `K8S_SYNC`, `K8S_ISSUER_NAME`, `K8S_SYNC_INTERVAL` | cert-manager inventory (needs RBAC to list `certificates`) |
+| `K8S_SYNC`, `K8S_ISSUER_NAME`, `K8S_SYNC_INTERVAL` | cert-manager inventory: mirror the `Certificate`s of these issuers (comma separated); needs RBAC to list `certificates`, never reads Secrets |
 | `DB_PATH`, `PORT`, `STATIC_DIR` | storage, listen port, UI directory |
 
 ```yaml
