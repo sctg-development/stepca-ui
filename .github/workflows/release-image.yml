@@ -1,8 +1,12 @@
 name: release-image
 # Multi-arch image (native amd64 + arm64 runners) pushed to Docker Hub on a release (or by hand).
 # DOCKER_USERNAME / DOCKER_PASSWORD are organization secrets of sctg-development.
+# the reusable workflow's nested jobs (binary release, attestation) request these
 permissions:
-  contents: read
+  id-token: write
+  contents: write
+  attestations: write
+  packages: write
 
 on:
   release:
