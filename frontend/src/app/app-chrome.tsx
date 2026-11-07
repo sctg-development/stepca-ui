@@ -9,7 +9,8 @@ import Footer from './footer'
 // bare, focused login screen reads better than one wrapped in a full app
 // shell. Every other route gets the normal Navigation + Footer.
 export default function AppChrome({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
+  // trailingSlash export: '/login/' must equal '/login'
+  const pathname = (usePathname() || '').replace(/\/+$/, '') || '/'
   const showChrome = pathname !== '/login'
 
   return (

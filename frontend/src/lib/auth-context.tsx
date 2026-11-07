@@ -19,7 +19,8 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
+  // the static export uses trailingSlash: usePathname() returns '/login/', not '/login'
+  const pathname = (usePathname() || '').replace(/\/+$/, '') || '/'
   const router = useRouter()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [initializing, setInitializing] = useState(true)
