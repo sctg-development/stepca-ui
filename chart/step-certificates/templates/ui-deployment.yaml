@@ -1,0 +1,193 @@
+{{- if .Values.ui.enabled }}
+{{- $ui := include "step-certificates.ui.fullname" . }}
+{{- $secretName := .Values.ui.existingSecret | default $ui }}
+{{- if .Values.ui.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $ui }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.ui.labels" . | nindent 4 }}
+spec:
+  accessModes: [{{ .Values.ui.persistence.accessMode }}]
+  {{- with .Values.ui.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.ui.persistence.size }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $ui }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.ui.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.ui.replicaCount }}
+  strategy:
+    type: Recreate          # ReadWriteOnce volume + SQLite
+  selector:
+    matchLabels:
+      {{- include "step-certificates.ui.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "step-certificates.ui.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/ui-config.yaml") . | sha256sum }}
+        {{- with .Values.ui.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $ui }}
+      automountServiceAccountToken: {{ .Values.ui.certManagerSync.enabled }}
+      {{- with .Values.ui.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ui
+          image: "{{ .Values.ui.image.repository }}:{{ .Values.ui.image.tag }}"
+          imagePullPolicy: {{ .Values.ui.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: CA_URL
+              value: {{ .Values.ui.caUrl | default (include "step-certificates.url" .) | quote }}
+            - name: CA_ROOT_FILE
+              value: /etc/stepca-ui/ca/root_ca.crt
+            - name: PROFILES_FILE
+              value: /etc/stepca-ui/profiles/profiles.yaml
+            - name: USERS_FILE
+              value: /etc/stepca-ui/users/users.yaml
+            - name: COOKIE_SECURE
+              value: {{ .Values.ui.cookieSecure | quote }}
+            {{- if .Values.ui.auth.trustProxy }}
+            - name: TRUST_PROXY_AUTH
+              value: "true"
+            - name: PROXY_USER_HEADER
+              value: {{ .Values.ui.auth.header | quote }}
+            - name: ADMIN_EMAILS
+              value: {{ join "," .Values.ui.auth.adminEmails | quote }}
+            - name: VIEWER_EMAILS
+              value: {{ join "," .Values.ui.auth.viewerEmails | quote }}
+            {{- end }}
+            {{- if .Values.ui.certManagerSync.enabled }}
+            - name: K8S_SYNC
+              value: "true"
+            - name: K8S_ISSUER_NAME
+              value: {{ .Values.clusterIssuer.name | quote }}
+            - name: K8S_SYNC_INTERVAL
+              value: {{ .Values.ui.certManagerSync.interval | quote }}
+            {{- end }}
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+            - {name: tmp, mountPath: /tmp}
+            - {name: ca, mountPath: /etc/stepca-ui/ca, readOnly: true}
+            - {name: profiles, mountPath: /etc/stepca-ui/profiles, readOnly: true}
+            - {name: users, mountPath: /etc/stepca-ui/users, readOnly: true}
+            - {name: keys, mountPath: /etc/stepca-ui/keys, readOnly: true}
+      volumes:
+        - name: data
+          {{- if .Values.ui.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $ui }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: ca
+          configMap:
+            name: {{ $ui }}
+            items: [{key: root_ca.crt, path: root_ca.crt}]
+        - name: profiles
+          configMap:
+            name: {{ $ui }}
+            items: [{key: profiles.yaml, path: profiles.yaml}]
+        - name: users
+          secret:
+            secretName: {{ $secretName }}
+            items: [{key: users.yaml, path: users.yaml}]
+        - name: keys
+          secret:
+            secretName: {{ $secretName }}
+            defaultMode: 0440
+            items:
+              {{- range $name, $_ := .Values.ui.profiles }}
+              - {key: {{ $name }}.json, path: {{ $name }}.json}
+              {{- end }}
+      {{- with .Values.ui.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.ui.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $ui }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.ui.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: {{ .Values.ui.service.port }}
+      targetPort: http
+  selector:
+    {{- include "step-certificates.ui.selectorLabels" . | nindent 4 }}
+{{- if .Values.ui.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $ui }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.ui.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "step-certificates.ui.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        {{- required "ui.networkPolicy.allowFrom must list the peers allowed to reach the UI" .Values.ui.networkPolicy.allowFrom | toYaml | nindent 8 }}
+      ports:
+        - port: 8080
+{{- end }}
+{{- end }}

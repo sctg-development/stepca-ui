@@ -1,0 +1,61 @@
+{{- if .Values.ui.enabled }}
+{{- $ui := include "step-certificates.ui.fullname" . }}
+{{- $root := .Values.ui.rootCA | default .Values.inject.certificates.root_ca }}
+{{- if not $root }}{{ fail "ui.enabled requires ui.rootCA or inject.certificates.root_ca" }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $ui }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.ui.labels" . | nindent 4 }}
+data:
+  root_ca.crt: |
+    {{- $root | nindent 4 }}
+  profiles.yaml: |
+    profiles:
+    {{- range (include "step-certificates.ui.profileNames" . | splitList ",") }}
+    {{- if . }}
+    {{- $p := index $.Values.ui.profiles . }}
+      - name: {{ . }}
+        label: {{ $p.label | default . | quote }}
+        provisioner: {{ required (printf "ui.profiles.%s.provisioner is required" .) $p.provisioner | quote }}
+        keyFile: /etc/stepca-ui/keys/{{ . }}.json
+        {{- with $p.keyType }}
+        keyType: {{ . }}
+        {{- end }}
+        {{- with $p.keySize }}
+        keySize: {{ . }}
+        {{- end }}
+        {{- with $p.defaultDays }}
+        defaultDays: {{ . }}
+        {{- end }}
+        {{- with $p.maxDays }}
+        maxDays: {{ . }}
+        {{- end }}
+    {{- end }}
+    {{- end }}
+{{- if not .Values.ui.existingSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $ui }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.ui.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  users.yaml: |
+    users:
+    {{- range $name, $u := .Values.ui.users }}
+      - username: {{ $name | quote }}
+        passwordHash: {{ required (printf "ui.users.%s.passwordHash is required" $name) $u.passwordHash | quote }}
+        role: {{ $u.role | default "viewer" }}
+    {{- end }}
+  {{- range $name, $p := .Values.ui.profiles }}
+  {{ $name }}.json: |
+    {{- required (printf "ui.profileKeys.%s (the provisioner's private JWK) is required" $name) (index $.Values.ui.profileKeys $name) | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

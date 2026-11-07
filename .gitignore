@@ -1,0 +1,20 @@
+# Go
+*.test
+*.out
+/backend/stepca-ui
+/backend/main
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# local state and secrets
+data/
+logs/
+.env
+*.key
+chart/step-certificates/charts/
+chart/step-certificates/Chart.lock

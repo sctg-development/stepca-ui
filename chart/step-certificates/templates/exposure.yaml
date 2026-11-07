@@ -1,0 +1,74 @@
+{{- if and .Values.exposure.host (or .Values.exposure.https.enabled .Values.exposure.crl.enabled) }}
+{{- $fullname := include "step-certificates.fullname" . }}
+{{- if .Values.exposure.https.enabled }}
+# HTTPS of the CA: TLS passthrough, the certificate presented is the CA's own (signed by its intermediate)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-https
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.labels" . | nindent 4 }}
+  {{- with .Values.exposure.https.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.exposure.ingressClassName }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.exposure.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $fullname }}
+                port:
+                  number: {{ .Values.service.port }}
+---
+{{- end }}
+{{- if .Values.exposure.crl.enabled }}
+# CRL over plain HTTP (the CA's insecureAddress)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-crl
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: {{ .Values.exposure.crl.port }}
+  selector:
+    app.kubernetes.io/name: {{ include "step-certificates.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}-crl
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "step-certificates.labels" . | nindent 4 }}
+spec:
+  {{- with .Values.exposure.ingressClassName }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.exposure.host }}
+      http:
+        paths:
+          - path: {{ .Values.exposure.crl.path }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ $fullname }}-crl
+                port:
+                  number: 80
+{{- end }}
+{{- end }}
