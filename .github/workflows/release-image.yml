@@ -18,6 +18,7 @@ jobs:
     uses: sctg-development/build-multi-arch-docker-action/.github/workflows/build.yml@v2
     with:
       dockerfile: Dockerfile
+      cleanup: false
       context: .
       image: sctg/stepca-ui
       # docker/metadata-action adds `latest` by itself for type=semver of a non-prerelease tag (and the action has
